@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <title>Cacamon</title>
+    <style>
+        body {
+            background-color: #050505;
+            color: #fff;
+            font-family: 'Courier New', Courier, monospace;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            margin: 0;
+            overflow: hidden;
+        }
+        #game-container {
+            position: relative;
+            border: 4px solid #fff;
+            box-shadow: 0 0 20px rgba(255,255,255,0.2);
+        }
+        canvas {
+            background-color: #000;
+            display: block;
+        }
+        #ui {
+            width: 800px;
+            background: #111;
+            border: 2px solid #fff;
+            border-top: none;
+            padding: 15px;
+            box-sizing: border-box;
+            display: flex;
+            justify-content: space-between;
+        }
+        .btn-group {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            max-width: 500px;
+        }
+        button {
+            background: #000;
+            color: #fff;
+            border: 2px solid #fff;
+            padding: 10px 15px;
+            font-family: inherit;
+            font-weight: bold;
+            cursor: pointer;
+        }
+        button:hover {
+            background: #fff;
+            color: #000;
+        }
+        #log {
+            font-size: 14px;
+            max-width: 250px;
+            color: #aaa;
+        }
+    </style>
+</head>
+<body>
+
+<div id="game-container">
+    <canvas id="gameCanvas" width="800" height="450"></canvas>
+</div>
+
+<div id="ui">
+    <div class="btn-group" id="action-buttons">
+        <!-- Butonlar JavaScript ile tur durumuna göre dolacak -->
+    </div>
+    <div id="log">Cacamon Dövüşü Başladı! Sıra V2'de.</div>
+</div>
+
+<script>
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+const logEl = document.getElementById('log');
+const btnGroup = document.getElementById('action-buttons');
+
+// SES DOSYALARI (Kendi mp3 dosyaların)
+const bgmVersus = new Audio('versus.mp3');
+bgmVersus.loop = true;
+const bgmBlackKnife = new Audio('black_knife.mp3');
+bgmBlackKnife.loop = true;
+
+let currentAudio = null;
+
+function playMusic(type) {
+    if (type === 'versus') {
+        if (currentAudio === bgmVersus) return;
+        if (currentAudio) currentAudio.pause();
+        bgmVersus.currentTime = 0;
+        bgmVersus.play().catch(()=>{});
+        currentAudio = bgmVersus;
+    } else if (type === 'black_knife') {
+        if (currentAudio === bgmBlackKnife) return;
+        if (currentAudio) currentAudio.pause();
+        bgmBlackKnife.currentTime = 0;
+        bgmBlackKnife.play().catch(()=>{});
+        currentAudio = bgmBlackKnife;
+    }
+}
+
+// SPRITE RESİMLERİ (Fotoğrafları kesinlikle düzenlemeden olduğu gibi yüklüyoruz)
+const images = {};
+const imageSources = {
+    knight_idle: 'knight_idle.png',
+    knight_dash: 'knight_dash.png',
+    knight_slash: 'knight_slash.png',
+    knight_darkworld: 'knight_darkworld.png',
+    knight_starstorm: 'knight_starstorm.png',
+    knife_bullet: 'knife_bullet.png',
+    minion_defensive: 'minion_defensive.png',
+    minion_offensive: 'minion_offensive.png'
+};
+
+for (let key in imageSources) {
+    images[key] = new Image();
+    images[key].src = imageSources[key];
+}
+
+// OYUN DURUMU
+let turn = 'V2'; // 'V2' veya 'KNIGHT'
+let shakeDuration = 0;
+let darkWorldActive = false;
+let particles = [];
+let projectiles = [];
+
+// Karakterler
+const v2 = { x: 150, y: 220, hp: 100, maxHp: 100, shake: 0 };
+const knight = { x: 600, y: 200, hp: 150, maxHp: 150, currentSprite: 'knight_idle', shake: 0 };
+
+// Hasar Titreme Efekti Logiği
+function applyDamage(target, amount) {
+    target.hp = Math.max(0, target.hp - amount);
+    target.shake = 15; // Damage shake tetiklenir
+}
+
+function updateUI() {
+    btnGroup.innerHTML = '';
+    if (turn === 'V2') {
+        playMusic('versus');
+        logEl.innerText = "Sıra V2'de! Saldırı seçin.";
+        
+        const btnAttack = document.createElement('button');
+        btnAttack.innerText = "Standart Atış";
+        btnAttack.onclick = () => {
+            applyDamage(knight, 15);
+            logEl.innerText = "V2 ateş etti! Knight hasar aldı.";
+            turn = 'KNIGHT';
+            updateUI();
+        };
+        btnGroup.appendChild(btnAttack);
+
+    } else {
+        playMusic('black_knife');
+        logEl.innerText = "Sıra The Roaring Knight'ta!";
+
+        // Saldırı 1: Black Knife
+        const btn1 = document.createElement('button');
+        btn1.innerText = "Black Knife";
+        btn1.onclick = () => {
+            knight.currentSprite = 'knight_dash';
+            applyDamage(v2, 25);
+            setTimeout(() => { knight.currentSprite = 'knight_idle'; turn = 'V2'; updateUI(); }, 800);
+        };
+
+        // Saldırı 2: Reality Cutting Slash
+        const btn2 = document.createElement('button');
+        btn2.innerText = "Reality Cutting Slash";
+        btn2.onclick = () => {
+            knight.currentSprite = 'knight_slash';
+            applyDamage(v2, 35);
+            // Ekran ortasına geçiş ve rakip üzerinde dev kaskı/kesik efekti
+            setTimeout(() => { knight.currentSprite = 'knight_idle'; turn = 'V2'; updateUI(); }, 1200);
+        };
+
+        // Saldırı 3: Dark World
+        const btn3 = document.createElement('button');
+        btn3.innerText = "Dark World";
+        btn3.onclick = () => {
+            knight.currentSprite = 'knight_darkworld';
+            darkWorldActive = true;
+            setTimeout(() => { 
+                darkWorldActive = false; 
+                knight.currentSprite = 'knight_idle'; 
+                turn = 'V2'; 
+                updateUI(); 
+            }, 2000);
+        };
+
+        // Saldırı 4: Dark Starstorm
+        const btn4 = document.createElement('button');
+        btn4.innerText = "Dark Starstorm";
+        btn4.onclick = () => {
+            knight.currentSprite = 'knight_starstorm';
+            applyDamage(v2, 30);
+            // Parmağından çıkan yıldız efektleri
+            for(let i=0; i<20; i++) {
+                particles.push({
+                    x: knight.x - 30,
+                    y: knight.y + 20,
+                    vx: -(Math.random() * 5 + 3),
+                    vy: (Math.random() - 0.5) * 4,
+                    size: Math.random() * 6 + 2
+                });
+            }
+            setTimeout(() => { knight.currentSprite = 'knight_idle'; turn = 'V2'; updateUI(); }, 1200);
+        };
+
+        btnGroup.appendChild(btn1);
+        btnGroup.appendChild(btn2);
+        btnGroup.appendChild(btn3);
+        btnGroup.appendChild(btn4);
+    }
+}
+
+// ANA ÇİZİM VE OYUN DÖNGÜSÜ
+function gameLoop() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    // Arka Plan / Dark World Siyah Sis Efekti
+    if (darkWorldActive) {
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.85)';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+    }
+
+    // V2 Çizimi (Hasar aldığında sallanır)
+    let v2OffsetX = v2.shake > 0 ? (Math.random() - 0.5) * 10 : 0;
+    if (v2.shake > 0) v2.shake--;
+    
+    ctx.fillStyle = "#e74c3c";
+    ctx.fillRect(v2.x + v2OffsetX, v2.y, 40, 80); // V2 Temsili Gövde
+
+    // Knight Çizimi (Senin verdiğin ham sprite resimlerini çizer)
+    let knightOffsetX = knight.shake > 0 ? (Math.random() - 0.5) * 10 : 0;
+    if (knight.shake > 0) knight.shake--;
+
+    let activeImg = images[knight.currentSprite];
+    if (activeImg && activeImg.complete) {
+        ctx.drawImage(activeImg, knight.x + knightOffsetX, knight.y, 120, 140);
+    }
+
+    // Parçacıklar (Dark Starstorm Yıldızları)
+    ctx.fillStyle = "#9b59b6";
+    particles.forEach((p, index) => {
+        p.x += p.vx;
+        p.y += p.vy;
+        ctx.fillRect(p.x, p.y, p.size, p.size);
+        if (p.x < 0) particles.splice(index, 1);
+    });
+
+    // Can Barları
+    ctx.fillStyle = "#fff";
+    ctx.fillText(`V2 HP: ${v2.hp}/${v2.maxHp}`, 150, 200);
+    ctx.fillText(`The Roaring Knight HP: ${knight.hp}/${knight.maxHp}`, 580, 180);
+
+    requestAnimationFrame(gameLoop);
+}
+
+// Oyunu Başlat
+updateUI();
+gameLoop();
+</script>
+</body>
+</html>
